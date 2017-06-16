@@ -7,6 +7,7 @@ use ReflectionClass;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Str;
 use Mpociot\Reflection\DocBlock;
+use Mpociot\Reflection\DocBlock\Tag;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Foundation\Http\FormRequest;
 use Mpociot\ApiDoc\Parsers\RuleDescriptionParser as Description;
@@ -86,7 +87,7 @@ abstract class AbstractGenerator
         })->collapse()->toArray();
 
         //Changes url with parameters like /users/{user} to /users/1
-        $uri = preg_replace('/{(.*)}/', 1, $uri);
+        $uri = preg_replace('/{(.*?)}/', 1, $uri);
 
         return $this->callRoute(array_shift($methods), $uri, [], [], [], $headers);
     }
@@ -108,6 +109,30 @@ abstract class AbstractGenerator
     }
 
     /**
+     * Get the response from the docblock if available.
+     *
+     * @param array $tags
+     *
+     * @return mixed
+     */
+    protected function getDocblockResponse($tags)
+    {
+        $responseTags = array_filter($tags, function ($tag) {
+            if (! ($tag instanceof Tag)) {
+                return false;
+            }
+
+            return \strtolower($tag->getName()) == 'response';
+        });
+        if (empty($responseTags)) {
+            return;
+        }
+        $responseTag = \array_first($responseTags);
+
+        return \response(\json_encode($responseTag->getContent()));
+    }
+
+    /**
      * @param  \Illuminate\Routing\Route  $route
      *
      * @return string
@@ -124,6 +149,7 @@ abstract class AbstractGenerator
         return [
             'short' => $phpdoc->getShortDescription(),
             'long' => $phpdoc->getLongDescription()->getContents(),
+            'tags' => $phpdoc->getTags(),
         ];
     }
 
@@ -301,7 +327,7 @@ abstract class AbstractGenerator
             case 'digits':
                 $attributeData['type'] = 'numeric';
                 $attributeData['description'][] = Description::parse($rule)->with($parameters)->getDescription();
-                $attributeData['value'] = $faker->randomNumber($parameters[0], true);
+                $attributeData['value'] = ($parameters[0] < 9) ? $faker->randomNumber($parameters[0], true) : substr(mt_rand(100000000, mt_getrandmax()), 0, $parameters[0]);
                 break;
             case 'digits_between':
                 $attributeData['type'] = 'numeric';
