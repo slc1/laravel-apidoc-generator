@@ -32,24 +32,27 @@ class DingoGenerator extends AbstractGenerator
             $docblockResponse = $this->getDocblockResponse($routeDescription['tags']);
             if ($docblockResponse) {
                 // we have a response from the docblock ( @response )
-                $response = $docblockResponse;
+                $response = json_decode($docblockResponse->getContent());
                 $showresponse = true;
             }
             if (! $response) {
                 $transformerResponse = $this->getTransformerResponse($routeDescription['tags']);
                 if ($transformerResponse) {
                     // we have a transformer response from the docblock ( @transformer || @transformercollection )
-                    $response = $transformerResponse;
+                    $response = json_decode($transformerResponse->getContent());
                     $showresponse = true;
                 }
             }
             if (! $response) {
                 try {
                     $response = $this->getRouteResponse($route, $bindings, $headers);
+                    if (is_object($response)) {
+                        $response = json_encode(json_decode($response->getContent(), JSON_PRETTY_PRINT));
+                    }
                 } catch (Exception $e) {
                 }
             }
-            $content = json_encode(json_decode($response, JSON_PRETTY_PRINT));
+            $content = $response;
         }
 
         
