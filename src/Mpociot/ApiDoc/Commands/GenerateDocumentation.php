@@ -4,6 +4,7 @@ namespace Mpociot\ApiDoc\Commands;
 
 use ReflectionClass;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 use Mpociot\Reflection\DocBlock;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Route;
@@ -80,11 +81,13 @@ class GenerateDocumentation extends Command
 
         $generator->prepareMiddleware($this->option('useMiddlewares'));
 
+        DB::beginTransaction();
         if ($this->option('router') === 'laravel') {
             $parsedRoutes = $this->processLaravelRoutes($generator, $allowedRoutes, $routePrefix, $middleware);
         } else {
             $parsedRoutes = $this->processDingoRoutes($generator, $allowedRoutes, $routePrefix, $middleware);
         }
+        DB::rollback();
         $parsedRoutes = collect($parsedRoutes)->groupBy('resource')->sort(function ($a, $b) {
             return strcmp($a->first()['resource'], $b->first()['resource']);
         });
