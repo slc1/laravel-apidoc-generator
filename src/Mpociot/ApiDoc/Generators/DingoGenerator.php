@@ -3,6 +3,7 @@
 namespace Mpociot\ApiDoc\Generators;
 
 use Exception;
+use ReflectionClass;
 use League\Fractal\Manager;
 use League\Fractal\Resource\Item;
 use Mpociot\Reflection\DocBlock\Tag;
