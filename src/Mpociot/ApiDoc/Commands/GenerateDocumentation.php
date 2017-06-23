@@ -40,6 +40,7 @@ class GenerateDocumentation extends Command
                             {--infoBlade= : The info blade file}
                             {--routeBlade= : The route blade file}
                             {--noCompare : Turns off compare.md (to force regenerating)}
+                            {--includes= : Directory path to markdown files to include}
     ';
 
     /**
@@ -138,8 +139,29 @@ class GenerateDocumentation extends Command
             });
         });
 
+
+        // Adds the included markdown
+        $includeMD = [];
+        if ($this->option('includes')) {
+            $includesPath = $outputPath.DIRECTORY_SEPARATOR.'source'.DIRECTORY_SEPARATOR.'includes'.DIRECTORY_SEPARATOR;
+            $dir = opendir($this->option('includes'));
+            $this->info('Copying Markdown to include: '.$this->option('includes').' to '.$includesPath);
+            if ($dir) {
+                while(false !== ( $file = readdir($dir)) ) {
+                    if (( $file != '.' ) && ( $file != '..' )) {
+                        if ( ! is_dir($this->option('includes') . DIRECTORY_SEPARATOR . $file) ) {
+                            copy($this->option('includes') . DIRECTORY_SEPARATOR . $file,$includesPath . DIRECTORY_SEPARATOR . $file);
+                            $includeMD[] = preg_replace('/\\.[^.\\s]{2,4}$/', '', substr($file, 1));
+                        }
+                    }
+                }
+            }
+            closedir($dir);
+        }
+
         // Generate the frontmatter (extra infomartion)
-        $frontmatter = view($frontmatterBlade);
+        $frontmatter = view($frontmatterBlade)
+            ->with('includes', $includeMD);
 
         /*
          * In case the target file already exists, we should check if the documentation was modified
