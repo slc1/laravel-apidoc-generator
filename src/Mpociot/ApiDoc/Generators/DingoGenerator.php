@@ -46,9 +46,13 @@ class DingoGenerator extends AbstractGenerator
             }
             if (! $response) {
                 try {
-                    $response = $this->getRouteResponse($route, $bindings, $headers);
-                    if (is_object($response)) {
-                        $response = json_encode(json_decode($response->getContent(), JSON_PRETTY_PRINT));
+                    // Only execute GET routes
+                    if ( in_array('GET', $route->getMethods()) ) {
+                        $response = $this->getRouteResponse($route, $bindings, $headers);
+                        if (is_object($response)) {
+                            $response = json_encode(json_decode($response->getContent(), JSON_PRETTY_PRINT));
+                            $showresponse = true;
+                        }
                     }
                 } catch (Exception $e) {
                 }
