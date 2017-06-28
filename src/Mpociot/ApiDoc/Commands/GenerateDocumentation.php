@@ -33,6 +33,13 @@ class GenerateDocumentation extends Command
                             {--force : Force rewriting of existing routes}
                             {--bindings= : Route Model Bindings}
                             {--header=* : Custom HTTP headers to add to the example requests. Separate the header name and value with ":"}
+                            {--bearer= : HTTP Authorization Bearer (to get around --header limitations)}
+                            {--documentarianBlade= : The documentarian blade file}
+                            {--frontmatterBlade= : The frontmatter blade file}
+                            {--infoBlade= : The info blade file}
+                            {--routeBlade= : The route blade file}
+                            {--noCompare : Turns off compare.md (to force regenerating)}
+                            {--includes= : Directory path to markdown files to include}
     ';
 
     /**
@@ -98,61 +105,111 @@ class GenerateDocumentation extends Command
      */
     private function writeMarkdown($parsedRoutes)
     {
+        // Documentarian object
+        $documentarian = new Documentarian();
+
+        // Folder and File locations
         $outputPath = $this->option('output');
         $targetFile = $outputPath.DIRECTORY_SEPARATOR.'source'.DIRECTORY_SEPARATOR.'index.md';
         $compareFile = $outputPath.DIRECTORY_SEPARATOR.'source'.DIRECTORY_SEPARATOR.'.compare.md';
+        if (! is_dir($outputPath)) {
+            $documentarian->create($outputPath);
+        }
 
-        $infoText = view('apidoc::partials.info')
+        // Variables that store our target Blade (overridden by options)
+        $documentarianBlade = $this->option('documentarianBlade') ? $this->option('documentarianBlade') : "apidoc::documentarian";
+        $frontmatterBlade = $this->option('frontmatterBlade') ? $this->option('frontmatterBlade') : "apidoc::partials.frontmatter";
+        $infoBlade = $this->option('infoBlade') ? $this->option('infoBlade') : "apidoc::partials.info";
+
+        // Generate the Information (the top part of file) markdown text
+        $infoText = view($infoBlade)
             ->with('outputPath', ltrim($outputPath, 'public/'))
             ->with('showPostmanCollectionButton', ! $this->option('noPostmanCollection'));
 
+        // Generate the Route views
         $parsedRouteOutput = $parsedRoutes->map(function ($routeGroup) {
             return $routeGroup->map(function ($route) {
-                $route['output'] = (string) view('apidoc::partials.route')->with('parsedRoute', $route)->render();
+                $routeBlade = $this->option('routeBlade') ? $this->option('routeBlade') : "apidoc::partials.route";
+                $route['output'] = (string) view($routeBlade)->with('parsedRoute', $route);
 
                 return $route;
             });
         });
 
-        $frontmatter = view('apidoc::partials.frontmatter');
+
+        // Adds the included markdown
+        $includeMD = [];
+        if ($this->option('includes')) {
+            $includesPath = $outputPath.DIRECTORY_SEPARATOR.'source'.DIRECTORY_SEPARATOR.'includes'.DIRECTORY_SEPARATOR;
+            $dir = opendir($this->option('includes'));
+            $this->info('Copying Markdown to include: '.$this->option('includes').' to '.$includesPath);
+            if ($dir) {
+                while(false !== ( $file = readdir($dir)) ) {
+                    if (( $file != '.' ) && ( $file != '..' )) {
+                        if ( ! is_dir($this->option('includes') . DIRECTORY_SEPARATOR . $file) ) {
+                            copy($this->option('includes') . DIRECTORY_SEPARATOR . $file,$includesPath . DIRECTORY_SEPARATOR . $file);
+                            $includeMD[] = preg_replace('/\\.[^.\\s]{2,4}$/', '', substr($file, 1));
+                        }
+                    }
+                }
+            }
+            closedir($dir);
+        }
+
+        // Generate the frontmatter (extra infomartion)
+        $frontmatter = view($frontmatterBlade)
+            ->with('includes', $includeMD);
+
         /*
          * In case the target file already exists, we should check if the documentation was modified
          * and skip the modified parts of the routes.
          */
-        if (file_exists($targetFile) && file_exists($compareFile)) {
-            $generatedDocumentation = file_get_contents($targetFile);
-            $compareDocumentation = file_get_contents($compareFile);
+        if (! $this->option('noCompare')) {
+            if (file_exists($targetFile) && file_exists($compareFile)) {
+                $generatedDocumentation = file_get_contents($targetFile);
+                $compareDocumentation = file_get_contents($compareFile);
 
-            if (preg_match('/<!-- START_INFO -->(.*)<!-- END_INFO -->/is', $generatedDocumentation, $generatedInfoText)) {
-                $infoText = trim($generatedInfoText[1], "\n");
-            }
+                if (preg_match('/<!-- START_INFO -->(.*)<!-- END_INFO -->/is', $generatedDocumentation, $generatedInfoText)) {
+                    $infoText = trim($generatedInfoText[1], "\n");
+                }
 
-            if (preg_match('/---(.*)---\\s<!-- START_INFO -->/is', $generatedDocumentation, $generatedFrontmatter)) {
-                $frontmatter = trim($generatedFrontmatter[1], "\n");
-            }
+                if (preg_match('/---(.*)---\\s<!-- START_INFO -->/is', $generatedDocumentation, $generatedFrontmatter)) {
+                    $frontmatter = trim($generatedFrontmatter[1], "\n");
+                }
 
-            $parsedRouteOutput->transform(function ($routeGroup) use ($generatedDocumentation, $compareDocumentation) {
-                return $routeGroup->transform(function ($route) use ($generatedDocumentation, $compareDocumentation) {
-                    if (preg_match('/<!-- START_'.$route['id'].' -->(.*)<!-- END_'.$route['id'].' -->/is', $generatedDocumentation, $routeMatch)) {
-                        $routeDocumentationChanged = (preg_match('/<!-- START_'.$route['id'].' -->(.*)<!-- END_'.$route['id'].' -->/is', $compareDocumentation, $compareMatch) && $compareMatch[1] !== $routeMatch[1]);
-                        if ($routeDocumentationChanged === false || $this->option('force')) {
-                            if ($routeDocumentationChanged) {
-                                $this->warn('Discarded manual changes for route ['.implode(',', $route['methods']).'] '.$route['uri']);
+                $parsedRouteOutput->transform(function ($routeGroup) use ($generatedDocumentation, $compareDocumentation) {
+                    return $routeGroup->transform(function ($route) use ($generatedDocumentation, $compareDocumentation) {
+                        if (preg_match('/<!-- START_'.$route['id'].' -->(.*)<!-- END_'.$route['id'].' -->/is', $generatedDocumentation, $routeMatch)) {
+                            $routeDocumentationChanged = (preg_match('/<!-- START_'.$route['id'].' -->(.*)<!-- END_'.$route['id'].' -->/is', $compareDocumentation, $compareMatch) && $compareMatch[1] !== $routeMatch[1]);
+                            if ($routeDocumentationChanged === false || $this->option('force')) {
+                                if ($routeDocumentationChanged) {
+                                    $this->warn('Discarded manual changes for route ['.implode(',', $route['methods']).'] '.$route['uri']);
+                                }
+                            } else {
+                                $this->warn('Skipping modified route ['.implode(',', $route['methods']).'] '.$route['uri']);
+                                $route['modified_output'] = $routeMatch[0];
                             }
-                        } else {
-                            $this->warn('Skipping modified route ['.implode(',', $route['methods']).'] '.$route['uri']);
-                            $route['modified_output'] = $routeMatch[0];
                         }
-                    }
 
-                    return $route;
+                        return $route;
+                    });
                 });
-            });
+            }
+
+            // Write compare markdown file
+            $compareMarkdown = view($documentarianBlade)
+                ->with('writeCompareFile', true)
+                ->with('frontmatter', $frontmatter)
+                ->with('infoText', $infoText)
+                ->with('outputPath', $this->option('output'))
+                ->with('showPostmanCollectionButton', ! $this->option('noPostmanCollection'))
+                ->with('parsedRoutes', $parsedRouteOutput);
+
+            file_put_contents($compareFile, $compareMarkdown);
         }
 
-        $documentarian = new Documentarian();
-
-        $markdown = view('apidoc::documentarian')
+        // Generate Markdown
+        $markdown = view($documentarianBlade)
             ->with('writeCompareFile', false)
             ->with('frontmatter', $frontmatter)
             ->with('infoText', $infoText)
@@ -160,23 +217,8 @@ class GenerateDocumentation extends Command
             ->with('showPostmanCollectionButton', ! $this->option('noPostmanCollection'))
             ->with('parsedRoutes', $parsedRouteOutput);
 
-        if (! is_dir($outputPath)) {
-            $documentarian->create($outputPath);
-        }
-
         // Write output file
         file_put_contents($targetFile, $markdown);
-
-        // Write comparable markdown file
-        $compareMarkdown = view('apidoc::documentarian')
-            ->with('writeCompareFile', true)
-            ->with('frontmatter', $frontmatter)
-            ->with('infoText', $infoText)
-            ->with('outputPath', $this->option('output'))
-            ->with('showPostmanCollectionButton', ! $this->option('noPostmanCollection'))
-            ->with('parsedRoutes', $parsedRouteOutput);
-
-        file_put_contents($compareFile, $compareMarkdown);
 
         $this->info('Wrote index.md to: '.$outputPath);
 
@@ -255,10 +297,14 @@ class GenerateDocumentation extends Command
         $routes = $this->getRoutes();
         $bindings = $this->getBindings();
         $parsedRoutes = [];
+        $headers = $this->option('header');
+        if ($this->option('bearer')) {
+            $headers[] = "Authorization: Bearer ".$this->option('bearer');
+        }
         foreach ($routes as $route) {
             if (in_array($route->getName(), $allowedRoutes) || str_is($routePrefix, $generator->getUri($route)) || in_array($middleware, $route->middleware())) {
                 if ($this->isValidRoute($route) && $this->isRouteVisibleForDocumentation($route->getAction()['uses'])) {
-                    $parsedRoutes[] = $generator->processRoute($route, $bindings, $this->option('header'), $withResponse);
+                    $parsedRoutes[] = $generator->processRoute($route, $bindings, $headers, $withResponse);
                     $this->info('Processed route: ['.implode(',', $generator->getMethods($route)).'] '.$generator->getUri($route));
                 } else {
                     $this->warn('Skipping route: ['.implode(',', $generator->getMethods($route)).'] '.$generator->getUri($route));
@@ -282,10 +328,14 @@ class GenerateDocumentation extends Command
         $routes = $this->getRoutes();
         $bindings = $this->getBindings();
         $parsedRoutes = [];
+        $headers = $this->option('header');
+        if ($this->option('bearer')) {
+            $headers[] = "Authorization: Bearer ".$this->option('bearer');
+        }
         foreach ($routes as $route) {
             if (empty($allowedRoutes) || in_array($route->getName(), $allowedRoutes) || str_is($routePrefix, $route->uri()) || in_array($middleware, $route->middleware())) {
                 if ($this->isValidRoute($route) && $this->isRouteVisibleForDocumentation($route->getAction()['uses'])) {
-                    $parsedRoutes[] = $generator->processRoute($route, $bindings, $this->option('header'), $withResponse);
+                    $parsedRoutes[] = $generator->processRoute($route, $bindings, $headers, $withResponse);
                     $this->info('Processed route: ['.implode(',', $route->getMethods()).'] '.$route->uri());
                 } else {
                     $this->warn('Skipping route: ['.implode(',', $route->getMethods()).'] '.$route->uri());

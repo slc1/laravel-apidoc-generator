@@ -64,6 +64,13 @@ Option | Description
 `bindings` | List of route bindings that should be replaced when trying to retrieve route results. Syntax format: `binding_one,id|binding_two,id`
 `force` | Force the re-generation of existing/modified API routes
 `header` | Custom HTTP headers to add to the example requests. Separate the header name and value with ":". For example: `--header 'Authorization: CustomToken'`
+`bearer` | A custom wrapper for the HTTP Authorization Bearer header (to get around the occassional --header limitation). For example: `--bearer='eq8I10fhhff'` will be turned into the header `'Authorization: bearer eq8I10fhhff'`
+`documentarianBlade` | The optional custom documentarian blade file (uses Laravel view notation). For example: `--bearer='api.documentarian'` will grab the file `resources/views/api/documentarian.blade.php`
+`frontmatterBlade` | The optional custom frontmatter blade file (uses Laravel view notation). For example: `--bearer='api.partials.frontmatter'` will grab the file `resources/views/api/partials/frontmatter.blade.php`
+`infoBlade` | The optional custom info blade file (uses Laravel view notation). For example: `--bearer='api.partials.info'` will grab the file `resources/views/api/partials/info.blade.php`
+`routeBlade` | The optional custom route blade file (uses Laravel view notation). For example: `--bearer='api.partials.route'` will grab the file `resources/views/api/partials/route.blade.php`
+`noCompare` | Turns off the generation and use of the compare functionality of Documentarian (the compare.md file). This is useful if you make changes to the custom templates and wish to force it's use
+`includes` | The Directory path of markdown files to include as part of frontmatter.blade.php. These included Markdown files will be appended to the generated file. For example: `--includes='resources/api/includes'`
 
 ## Publish rule descriptions for customisation or translation.
 

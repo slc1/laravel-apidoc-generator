@@ -5,6 +5,9 @@ language_tabs:
 - javascript
 
 includes:
+@foreach($includes as $key => $include)
+- {{$include}}
+@endforeach
 
 search: true
 
