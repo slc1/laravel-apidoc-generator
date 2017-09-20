@@ -42,6 +42,43 @@ class LaravelGenerator extends AbstractGenerator
         return $route->methods();
     }
 
+
+    /**
+     * @param $string
+     * @return bool
+     */
+    public function isJson($string) {
+        json_decode($string);
+        return (json_last_error() == JSON_ERROR_NONE);
+    }
+
+    /**
+     * @param array $tags
+     * @return \Illuminate\Contracts\Routing\ResponseFactory|\Symfony\Component\HttpFoundation\Response|void
+     */
+    protected function getDocblockResponse($tags)
+    {
+        $responseTags = array_filter($tags, function ($tag) {
+            if (! ($tag instanceof Tag)) {
+                return false;
+            }
+
+            return \strtolower($tag->getName()) == 'response';
+        });
+        if (empty($responseTags)) {
+            return;
+        }
+        $responseTag = \array_first($responseTags);
+
+        $responseContent = preg_replace("!\r?\n!", "", $responseTag->getContent());
+
+        if ($this->isJson($responseContent)) {
+            return \response($responseContent, 200, ['Content-Type' =>'application/json']);
+        }
+
+        return \response(\json_encode($responseTag->getContent()));
+    }
+
     /**
      * @param  \Illuminate\Routing\Route $route
      * @param array $bindings
@@ -78,7 +115,7 @@ class LaravelGenerator extends AbstractGenerator
             if (! $response) {
                 try {
                     // Only execute GET routes
-                    if ( in_array('GET', $this->getMethods()) ) {
+                    if ( in_array('GET', $this->getMethods($route)) ) {
                         $response = $this->getRouteResponse($route, $bindings, $headers);
                         if ($response) {
                             $showresponse = true;
@@ -87,12 +124,20 @@ class LaravelGenerator extends AbstractGenerator
                 } catch (Exception $e) {
                 }
             }
-            if ($response->headers->get('Content-Type') === 'application/json') {
-                $content = json_encode(json_decode($response->getContent()), JSON_PRETTY_PRINT);
+            if (empty($response)) {
+                $content = "empty response";
             } else {
-                $content = $response->getContent();
+
+                if ($response->headers->get('Content-Type') === 'application/json') {
+                    $content = json_encode(json_decode($response->getContent()), JSON_PRETTY_PRINT);
+                } else {
+                    $content = $response->getContent();
+                }
             }
+
         }
+
+
 
         return $this->getParameters([
             'id' => md5($this->getUri($route).':'.implode($this->getMethods($route))),
@@ -251,12 +296,12 @@ class LaravelGenerator extends AbstractGenerator
     }
 
     /**
-     * @param  string $route
-     * @param  array $bindings
-     *
+     * @param $route
+     * @param array $bindings
+     * @param string $routeMethod
      * @return array
      */
-    protected function getRouteRules($route, $bindings)
+    protected function getRouteRules($route, $bindings,  $routeMethod = 'GET')
     {
         list($class, $method) = explode('@', $route);
         $reflection = new ReflectionClass($class);
